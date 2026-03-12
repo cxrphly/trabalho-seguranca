@@ -1,12 +1,22 @@
-```bash
 #!/bin/bash
 
-echo "Configurando cliente..."
+set -e
 
+echo "================================="
+echo "CONFIGURANDO CLIENTE (LAN)"
+echo "================================="
+
+sleep 2
+
+echo "Atualizando pacotes..."
 apt update
+
+echo "Instalando ferramentas..."
 apt install -y curl wget dnsutils net-tools
 
 IF=enp0s3
+
+echo "Configurando rede..."
 
 cat > /etc/netplan/01-client.yaml <<EOF
 network:
@@ -28,9 +38,11 @@ EOF
 netplan apply
 sleep 3
 
-echo "Configurando proxy..."
+echo "Rede configurada."
 
-cat >> /etc/environment <<EOF
+echo "Configurando proxy do sistema..."
+
+cat > /etc/environment <<EOF
 http_proxy=http://10.0.3.1:3128
 https_proxy=http://10.0.3.1:3128
 ftp_proxy=http://10.0.3.1:3128
@@ -41,10 +53,14 @@ FTP_PROXY=http://10.0.3.1:3128
 NO_PROXY=localhost,127.0.0.1,10.0.0.0/8
 EOF
 
+echo "Configurando proxy do APT..."
+
 cat > /etc/apt/apt.conf.d/95-proxy <<EOF
 Acquire::http::Proxy "http://10.0.3.1:3128";
 Acquire::https::Proxy "http://10.0.3.1:3128";
 EOF
+
+echo "Criando script de testes..."
 
 cat > ~/teste.sh <<EOF
 #!/bin/bash
@@ -53,71 +69,59 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "\n\033[1mTESTES DE CONECTIVIDADE\033[0m\n"
+echo -e "\nTESTES DE CONECTIVIDADE\n"
 
 echo -n "PING FIREWALL (10.0.3.1): "
-if ping -c 2 -W 2 10.0.3.1 > /dev/null 2>&1; then
-    echo -e "${GREEN}OK${NC}"
-else
-    echo -e "${RED}FALHOU${NC}"
-fi
+ping -c 2 10.0.3.1 > /dev/null && echo -e "\${GREEN}OK\${NC}" || echo -e "\${RED}FALHOU\${NC}"
 
 echo -n "PING SERVIDOR (10.0.4.10): "
-if ping -c 2 -W 2 10.0.4.10 > /dev/null 2>&1; then
-    echo -e "${GREEN}OK${NC}"
-else
-    echo -e "${RED}FALHOU${NC}"
-fi
+ping -c 2 10.0.4.10 > /dev/null && echo -e "\${GREEN}OK\${NC}" || echo -e "\${RED}FALHOU\${NC}"
 
 echo -n "PING INTERNET (8.8.8.8): "
-if ping -c 2 -W 2 8.8.8.8 > /dev/null 2>&1; then
-    echo -e "${GREEN}OK${NC}"
-else
-    echo -e "${RED}FALHOU${NC}"
-fi
+ping -c 2 8.8.8.8 > /dev/null && echo -e "\${GREEN}OK\${NC}" || echo -e "\${RED}FALHOU\${NC}"
 
-echo -e "\n\033[1mTESTES WEB\033[0m\n"
+echo -e "\nTESTES WEB\n"
 
-echo "TESTE SERVIDOR LOCAL (10.0.4.10):"
-curl -I --connect-timeout 5 http://10.0.4.10 2>/dev/null | head -n 1
+echo "Servidor DMZ:"
+curl -I http://10.0.4.10 2>/dev/null | head -n 1
 
-echo -e "\nTESTE SITE PERMITIDO (google.com):"
-curl -I --connect-timeout 5 http://google.com 2>/dev/null | head -n 1
+echo "Site permitido (Google):"
+curl -I http://google.com 2>/dev/null | head -n 1
 
-echo -e "\nTESTE SITE BLOQUEADO (facebook.com):"
-curl -I --connect-timeout 5 http://facebook.com 2>/dev/null | head -n 1
+echo "Site bloqueado (Facebook):"
+curl -I http://facebook.com 2>/dev/null | head -n 1
 
-echo -e "\n\033[1mINFORMAÇÕES DE REDE\033[0m\n"
-echo "IP: \$(ip -4 addr show $IF | grep -oP '(?<=inet\s)\d+(\.\d+){3}')"
+echo -e "\nINFORMACOES DE REDE\n"
+
+echo "IP: \$(hostname -I)"
 echo "Gateway: \$(ip route | grep default | awk '{print \$3}')"
-echo "DNS: \$(cat /etc/resolv.conf | grep nameserver | awk '{print \$2}')"
+echo "DNS:"
+cat /etc/resolv.conf | grep nameserver
+
 EOF
 
 chmod +x ~/teste.sh
 
 echo "Configurando aliases..."
+
 cat >> ~/.bashrc <<EOF
+
 alias testar='~/teste.sh'
 alias ip='ip -c addr'
 alias proxytest='curl -I http://google.com'
+
 EOF
 
-echo "Configurando ambiente..."
-source ~/.bashrc
-
 echo ""
-echo "===================================="
-echo "Cliente configurado com sucesso!"
-echo "===================================="
+echo "================================="
+echo "CLIENTE CONFIGURADO"
+echo "================================="
 echo ""
-echo "IP: 10.0.3.10/24"
+echo "IP: 10.0.3.10"
 echo "Gateway: 10.0.3.1"
 echo "Proxy: http://10.0.3.1:3128"
 echo ""
-echo "Comandos uteis:"
-echo "  testar     - Executar testes de conectividade"
-echo "  ip         - Ver configuração de IP"
+echo "Execute:"
+echo "testar"
 echo ""
-echo "Execute './teste.sh' para testar a conexão"
-echo "===================================="
-```
+echo "================================="
