@@ -13,7 +13,7 @@ DMZ_IF=$(ip link | grep -E "enp0s9|ens9" | cut -d: -f2 | tr -d ' ' | head -1)
 [ -z "$LAN_IF" ] && LAN_IF="enp0s8"
 [ -z "$DMZ_IF" ] && DMZ_IF="enp0s9"
 
-echo "Interfaces: WAN=$WAN_IF, LAN=$LAN_IF, DMZ=$DMZ_IF"
+echo "Interfaces: WAN=$WAN_IF LAN=$LAN_IF DMZ=$DMZ_IF"
 
 cat > /etc/netplan/01-netcfg.yaml << EOF
 network:
@@ -69,10 +69,16 @@ iptables -t nat -A POSTROUTING -s 10.0.3.0/24 -o $WAN_IF -j MASQUERADE
 iptables -t nat -A PREROUTING -i $WAN_IF -p tcp --dport 80 -j DNAT --to-destination 10.0.4.10:80
 iptables -t nat -A PREROUTING -i $WAN_IF -p tcp --dport 443 -j DNAT --to-destination 10.0.4.10:443
 
+iptables -t nat -A POSTROUTING -s 10.0.4.10 -o $WAN_IF -j MASQUERADE
+iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 80 -j ACCEPT
+iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 443 -j ACCEPT
+iptables -A FORWARD -s 10.0.4.10 -p udp --dport 53 -j ACCEPT
+iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 53 -j ACCEPT
+
 apt-get update
 apt-get install -y squid
 
-cat > /etc/squid/squid.conf << EOF
+cat > /etc/squid/squid.conf << 'EOF'
 http_port 3128
 acl rede_cliente src 10.0.3.0/24
 acl Safe_ports port 80
@@ -93,7 +99,7 @@ dns_nameservers 8.8.8.8 8.8.4.4
 visible_hostname firewall.quixada.local
 EOF
 
-cat > /etc/squid/blacklist.txt << EOF
+cat > /etc/squid/blacklist.txt << 'EOF'
 .facebook.com
 .youtube.com
 .instagram.com
@@ -110,4 +116,4 @@ systemctl enable squid
 apt-get install -y iptables-persistent
 netfilter-persistent save
 
-echo "Firewall configurado. Proxy em 10.0.3.1:3128"
+echo "Firewall configurado. Proxy: 10.0.3.1:3128"
