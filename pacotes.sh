@@ -4,7 +4,7 @@ echo "=== INSTALANDO PACOTES ADICIONAIS ==="
 
 apt-get update
 
-PACOTES="nmap net-tools tcpdump wireshark iftop iptraf-ng curl wget ftp telnet netcat openssl dnsutils lnav multitail auditd logwatch lynis rkhunter chkrootkit fail2ban clamav asciinema fastfetch htop"
+PACOTES="nmap net-tools tcpdump wireshark iftop iptraf-ng curl wget ftp telnet openssl dnsutils lnav multitail auditd logwatch lynis rkhunter chkrootkit fail2ban clamav asciinema neofetch htop"
 
 for pacote in $PACOTES; do
     echo "Instalando $pacote..."
