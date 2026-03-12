@@ -1,10 +1,15 @@
 #!/bin/bash
 
-echo "=== Configurando Firewall ==="
+echo "=== CONFIGURACAO COMPLETA DO FIREWALL ==="
+echo "Data: $(date)"
+echo
 
+# Habilitar IP forwarding
 echo 1 > /proc/sys/net/ipv4/ip_forward
-sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p
 
+# Identificar interfaces
 WAN_IF=$(ip link | grep -E "enp0s3|ens3" | cut -d: -f2 | tr -d ' ' | head -1)
 LAN_IF=$(ip link | grep -E "enp0s8|ens8" | cut -d: -f2 | tr -d ' ' | head -1)
 DMZ_IF=$(ip link | grep -E "enp0s9|ens9" | cut -d: -f2 | tr -d ' ' | head -1)
@@ -13,8 +18,13 @@ DMZ_IF=$(ip link | grep -E "enp0s9|ens9" | cut -d: -f2 | tr -d ' ' | head -1)
 [ -z "$LAN_IF" ] && LAN_IF="enp0s8"
 [ -z "$DMZ_IF" ] && DMZ_IF="enp0s9"
 
-echo "Interfaces: WAN=$WAN_IF LAN=$LAN_IF DMZ=$DMZ_IF"
+echo "Interfaces:"
+echo "  WAN: $WAN_IF (Internet)"
+echo "  LAN: $LAN_IF (Cliente: 10.0.3.0/24)"
+echo "  DMZ: $DMZ_IF (Servidor: 10.0.4.0/24)"
+echo
 
+# Configurar IPs das interfaces
 cat > /etc/netplan/01-netcfg.yaml << EOF
 network:
   version: 2
@@ -33,54 +43,69 @@ EOF
 netplan apply
 sleep 5
 
+# LIMPAR TODAS AS REGRAS
 iptables -F
 iptables -t nat -F
+iptables -t mangle -F
 iptables -X
 
+# POLITICA PADRAO DROP
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT DROP
 
+# LOOPBACK
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
 
-iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+# CONEXOES ESTABELECIDAS
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+# REGRAS PARA O PROPRIO FIREWALL
+iptables -A INPUT -p tcp --dport 22 -j ACCEPT           # SSH
+iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT  # PING
+iptables -A OUTPUT -p udp --dport 53 -j ACCEPT          # DNS
+iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT          # DNS TCP
+iptables -A OUTPUT -p udp --dport 123 -j ACCEPT         # NTP
 
-iptables -A FORWARD -p tcp -d 10.0.4.10 --dport 80 -j ACCEPT
-iptables -A FORWARD -p tcp -d 10.0.4.10 --dport 443 -j ACCEPT
-iptables -A FORWARD -p icmp -d 10.0.4.10 --icmp-type echo-request -j ACCEPT
+# REGRAS PARA O SERVIDOR WEB (DMZ - 10.0.4.10)
+iptables -A FORWARD -d 10.0.4.10 -p tcp --dport 80 -j ACCEPT   # HTTP
+iptables -A FORWARD -d 10.0.4.10 -p tcp --dport 443 -j ACCEPT  # HTTPS
+iptables -A FORWARD -d 10.0.4.10 -p icmp --icmp-type echo-request -j ACCEPT  # PING
 
-iptables -A FORWARD -p tcp -s 10.0.3.0/24 --dport 22 -j ACCEPT
-iptables -A FORWARD -p udp -s 10.0.3.0/24 --dport 53 -j ACCEPT
-iptables -A FORWARD -p tcp -s 10.0.3.0/24 --dport 80 -j ACCEPT
-iptables -A FORWARD -p tcp -s 10.0.3.0/24 --dport 443 -j ACCEPT
-iptables -A FORWARD -p tcp -s 10.0.3.0/24 --dport 21 -j ACCEPT
-iptables -A FORWARD -p tcp -s 10.0.3.0/24 --dport 25 -j ACCEPT
-iptables -A FORWARD -p icmp -s 10.0.3.0/24 --icmp-type echo-request -j ACCEPT
+# REGRAS PARA O CLIENTE (LAN - 10.0.3.10)
+iptables -A FORWARD -s 10.0.3.10 -p tcp --dport 22 -j ACCEPT   # SSH
+iptables -A FORWARD -s 10.0.3.10 -p udp --dport 53 -j ACCEPT   # DNS
+iptables -A FORWARD -s 10.0.3.10 -p tcp --dport 53 -j ACCEPT   # DNS TCP
+iptables -A FORWARD -s 10.0.3.10 -p tcp --dport 80 -j ACCEPT   # HTTP
+iptables -A FORWARD -s 10.0.3.10 -p tcp --dport 443 -j ACCEPT  # HTTPS
+iptables -A FORWARD -s 10.0.3.10 -p tcp --dport 21 -j ACCEPT   # FTP
+iptables -A FORWARD -s 10.0.3.10 -p tcp --dport 20 -j ACCEPT   # FTP data
+iptables -A FORWARD -s 10.0.3.10 -p tcp --dport 25 -j ACCEPT   # SMTP
+iptables -A FORWARD -s 10.0.3.10 -p icmp --icmp-type echo-request -j ACCEPT  # PING
 
-iptables -t nat -A POSTROUTING -s 10.0.3.0/24 -o $WAN_IF -j MASQUERADE
+# NAT - SNAT (cliente para internet)
+iptables -t nat -A POSTROUTING -s 10.0.3.10 -o $WAN_IF -j MASQUERADE
+
+# NAT - DNAT (internet para servidor web)
 iptables -t nat -A PREROUTING -i $WAN_IF -p tcp --dport 80 -j DNAT --to-destination 10.0.4.10:80
 iptables -t nat -A PREROUTING -i $WAN_IF -p tcp --dport 443 -j DNAT --to-destination 10.0.4.10:443
 
+# REGRAS ADICIONAIS PARA O SERVIDOR WEB ACESSAR INTERNET (PARA INSTALACAO)
 iptables -t nat -A POSTROUTING -s 10.0.4.10 -o $WAN_IF -j MASQUERADE
 iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 80 -j ACCEPT
 iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 443 -j ACCEPT
 iptables -A FORWARD -s 10.0.4.10 -p udp --dport 53 -j ACCEPT
-iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 53 -j ACCEPT
 
+# INSTALAR E CONFIGURAR SQUID
 apt-get update
-apt-get install -y squid
+apt-get install -y squid iptables-persistent
 
 cat > /etc/squid/squid.conf << 'EOF'
 http_port 3128
-acl rede_cliente src 10.0.3.0/24
+acl rede_cliente src 10.0.3.10
 acl Safe_ports port 80
 acl Safe_ports port 443
 acl Safe_ports port 21
@@ -113,7 +138,24 @@ EOF
 systemctl restart squid
 systemctl enable squid
 
-apt-get install -y iptables-persistent
+# SALVAR REGRAS
 netfilter-persistent save
 
-echo "Firewall configurado. Proxy: 10.0.3.1:3128"
+echo
+echo "=== CONFIGURACAO CONCLUIDA ==="
+echo
+echo "RESUMO:"
+echo "  Firewall IPs:"
+echo "    WAN: $WAN_IF (DHCP)"
+echo "    LAN: $LAN_IF - 10.0.3.1"
+echo "    DMZ: $DMZ_IF - 10.0.4.1"
+echo
+echo "  Cliente: 10.0.3.10"
+echo "  Servidor Web: 10.0.4.10"
+echo "  Proxy Squid: 10.0.3.1:3128"
+echo
+echo "  Regras aplicadas:"
+echo "    - Cliente pode acessar: SSH, DNS, HTTP/HTTPS, FTP, SMTP, PING"
+echo "    - Servidor Web pode: HTTP/HTTPS (entrada) e internet (saida)"
+echo "    - Firewall pode: SSH, PING, DNS"
+echo
