@@ -96,11 +96,9 @@ EOF
 
 cat > /etc/squid/squid.conf << 'EOF'
 http_port 3128
-
 acl rede_interna src 192.168.1.0/24
 acl dmz src 10.0.0.0/24
 acl localhost src 127.0.0.1/32
-
 acl SSL_ports port 443
 acl Safe_ports port 80
 acl Safe_ports port 21
@@ -109,7 +107,6 @@ acl Safe_ports port 70
 acl Safe_ports port 210
 acl Safe_ports port 1025-65535
 acl CONNECT method CONNECT
-
 acl blacklist dstdomain "/etc/squid/blacklist.txt"
 
 http_access deny blacklist
@@ -123,7 +120,6 @@ http_access deny all
 cache_mem 8 MB
 cache_dir ufs /var/spool/squid 100 16 256
 maximum_object_size 4 MB
-
 access_log /var/log/squid/access.log squid
 cache_log /var/log/squid/cache.log
 
@@ -137,7 +133,7 @@ squid -z
 systemctl start squid
 systemctl enable squid
 
-echo " Squid configurado (proxy explícito na porta 3128)"
+echo " Squid configurado (porta 3128)"
 
 
 echo "[5/8] Configurando iptables (firewall)..."
@@ -154,7 +150,6 @@ iptables -A INPUT -i lo -j ACCEPT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# === REGRAS PARA O FIREWALL ===
 iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
 iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
@@ -217,20 +212,18 @@ EOF
 chmod +x /root/verificar-firewall.sh
 
 
-echo "[7/8] Configuração concluída!"
+echo "[7/8] Configuração concluida"
 echo "=============================================="
-echo "FIREWALL CONFIGURADO COM SUCESSO!"
+echo "FIREWALL CONFIGURADO"
 echo "=============================================="
 echo ""
 echo "ACESSOS:"
 echo "  LAN: 192.168.1.1/24"
 echo "  DMZ: 10.0.0.1/24"
-echo "  Squid: porta 3128 (proxy explícito)"
+echo "  Squid: porta 3128"
 echo ""
-echo "COMANDOS ÚTEIS:"
 echo "  Verificar firewall: /root/verificar-firewall.sh"
 echo "  Ver logs do squid: tail -f /var/log/squid/access.log"
 echo "  Ver regras iptables: iptables -L -v -n"
 echo ""
-echo "PRÓXIMO PASSO: Configurar o Servidor WEB"
 echo "=============================================="

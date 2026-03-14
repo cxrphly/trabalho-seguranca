@@ -15,7 +15,6 @@ fi
 
 echo "[1/4] Configurando rede..."
 
-# Identificar interface
 IFACE=$(ip link show | grep -o "enp0s[0-9]" | head -1)
 
 cat > /etc/netplan/00-installer-config.yaml << EOF
@@ -37,7 +36,7 @@ EOF
 netplan apply
 sleep 3
 
-echo "  ✓ Interface $IFACE configurada: 192.168.1.100/24"
+echo " Interface $IFACE configurada: 192.168.1.100/24"
 
 echo "[2/4] Configurando DNS..."
 
@@ -50,13 +49,13 @@ nameserver 8.8.8.8
 nameserver 8.8.4.4
 EOF
 
-echo "  ✓ DNS configurado"
+echo "DNS configurado"
 echo "[3/4] Instalando ferramentas de teste..."
 
 apt update
 apt install -y curl wget telnet ftp net-tools nmap
 
-echo "  ✓ Ferramentas instaladas"
+echo " Ferramentas instaladas"
 
 echo "[4/4] Criando scripts de teste..."
 
@@ -109,7 +108,6 @@ echo "TESTE DO PROXY - COM PROXY CONFIGURADO"
 echo "=============================================="
 echo ""
 
-# Verificar se proxy está configurado
 if [ -z "$http_proxy" ]; then
     echo "Proxy NÃO configurado!"
     echo "Execute: source /root/configurar-proxy.sh"
@@ -122,8 +120,8 @@ fi
 echo "Proxy atual: $http_proxy"
 echo ""
 
-echo "1. Site PERMITIDO (example.com):"
-curl -s -I http://example.com | head -1
+echo "1. Site PERMITIDO (google.com):"
+curl -s -I http://google.com | head -1
 echo ""
 
 echo "2. Site BLOQUEADO (facebook.com):"
@@ -147,11 +145,10 @@ EOF
 cat > /root/testar-tudo.sh << 'EOF'
 #!/bin/bash
 echo "=============================================="
-echo "TESTE COMPLETO - TRABALHO DE SEGURANÇA"
+echo "TESTE COMPLETO - TRABALHO DE SEGURANCA"
 echo "=============================================="
 echo ""
 
-# Cores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -159,9 +156,9 @@ NC='\033[0m'
 
 test_cmd() {
     if $1 >/dev/null 2>&1; then
-        echo -e "${GREEN}✅ $2${NC}"
+        echo -e "${GREEN} ok $2${NC}"
     else
-        echo -e "${RED}❌ $2${NC}"
+        echo -e "${RED} err $2${NC}"
     fi
 }
 
@@ -199,8 +196,30 @@ fi
 echo ""
 
 echo "=============================================="
-echo "TESTES CONCLUÍDOS"
+echo "TESTES CONCLUIDOS"
 echo "=============================================="
 EOF
 
 chmod +x /root/*.sh
+
+echo "=============================================="
+echo "CLIENTE CONFIGURADO"
+echo "=============================================="
+echo ""
+echo "IP: 192.168.1.100"
+echo "Gateway: 192.168.1.1"
+echo ""
+echo "SCRIPTS DISPONÍVEIS:"
+echo "  /root/testar-conectividade.sh  - Testar rede"
+echo "  /root/configurar-proxy.sh       - Configurar proxy"
+echo "  /root/testar-proxy.sh           - Testar proxy"
+echo "  /root/testar-tudo.sh             - Teste completo"
+echo ""
+echo "1. Teste conectividade: bash /root/testar-conectividade.sh"
+echo "2. Configure o proxy:"
+echo "   export http_proxy=http://192.168.1.1:3128"
+echo "   export https_proxy=http://192.168.1.1:3128"
+echo "3. Teste o proxy: bash /root/testar-proxy.sh"
+echo "4. Teste completo: bash /root/testar-tudo.sh"
+echo ""
+echo "=============================================="

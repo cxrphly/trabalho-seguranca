@@ -114,31 +114,28 @@ sudo apt install -y net-tools curl wget vim
 
 ### No Firewall
 ```bash
-chmod +x firewall.sh
-sudo ./firewall.sh
+sudo bash ./firewall.sh
 ```
 
 ### No Servidor Web
 ```bash
-chmod +x server-web.sh
-sudo ./server-web.sh
+sudo bash /servidor-web.sh
 ```
 
 ### No Cliente
 ```bash
-chmod +x cliente.sh
-sudo ./cliente.sh
-exit 
-./testar.sh
+sudo bash./cliente.sh
+
 ```
 
 ---
 
 ## 5. Testes Rápidos
 
-### No Cliente
+### Haverá testes nas VM
 ```bash
-./testar.sh
+echo "SCRIPTS DISPONÍVEIS:"
+echo "  /root/
 ```
 
 ### Verificar logs do Squid (no firewall)
@@ -153,14 +150,4 @@ curl -I http://www.facebook.com
 ```
 
 ---
-
-## 6. Solução de Problemas Comuns
-
-| Problema | Solução |
-|----------|---------|
-| Cliente sem internet | Verificar gateway: `ip route show` |
-| Proxy não funciona | Fazer logout/login ou `source /etc/environment` |
-| Squid não inicia | `sudo squid -k parse` para verificar configuração |
-| VMs não se comunicam | Verificar redes internas no VirtualBox |
-| Regras iptables não persistem | `sudo iptables-save > /etc/iptables/rules.v4` |
 

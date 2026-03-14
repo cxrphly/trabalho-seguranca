@@ -60,7 +60,7 @@ cat > /var/www/html/index.html << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Servidor WEB - Campus Quixadá</title>
+    <title>Servidor WEB - Campus Quixada</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f5f5f5; }
         .container { background: white; padding: 30px; border-radius: 10px; width: 80%; margin: auto; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
@@ -72,15 +72,15 @@ cat > /var/www/html/index.html << 'EOF'
 </head>
 <body>
     <div class="container">
-        <h1>Servidor WEB da Organização</h1>
+        <h1>Servidor WEB da Organizacao</h1>
         <div class="info">
-            <h2>Campus Quixadá - Segurança da Informação</h2>
-            <p><strong>Status:</strong> <span class="success">✅ DMZ - Acesso Permitido</span></p>
+            <h2>Campus Quixada - Seguranca da Informacao</h2>
+            <p><strong>Status:</strong> <span class="success">DMZ - Acesso Permitido</span></p>
             <p><strong>IP do Servidor:</strong> <span class="ip">10.0.0.2</span></p>
             <p><strong>Gateway:</strong> <span class="ip">10.0.0.1</span> (Firewall)</p>
             <p><strong>Data e Hora:</strong> <?php echo date('d/m/Y H:i:s'); ?></p>
-            <p><strong>Trabalho:</strong> TP1 - Segurança da Informação</p>
-            <p><strong>Grupo:</strong> [NOME DO GRUPO]</p>
+            <p><strong>Trabalho:</strong> TP1 - Seguranca da Informacao</p>
+            <p><strong>Grupo:</strong> Equipe</p>
         </div>
     </div>
 </body>
@@ -119,8 +119,9 @@ EOF
 
 chmod +x /root/testar-servidor.sh
 
+
 echo "=============================================="
-echo "SERVIDOR WEB CONFIGURADO COM SUCESSO!"
+echo "SERVIDOR WEB CONFIGURADO"
 echo "=============================================="
 echo ""
 echo "ACESSOS:"
@@ -131,5 +132,4 @@ echo ""
 echo "TESTES:"
 echo "  /root/testar-servidor.sh"
 echo ""
-echo "PRÓXIMO PASSO: Configurar o Cliente"
 echo "=============================================="
