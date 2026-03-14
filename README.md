@@ -1,5 +1,4 @@
-## README - Trabalho Prático de Segurança da Informação
-### Campus de Quixadá - UFC
+### Seguranca da Informacao
 
 ---
 
