@@ -1,347 +1,236 @@
 #!/bin/bash
+# firewall.sh - Configuração completa do Firewall
+# Execute: sudo bash firewall.sh
 
-# Configurações de cores para os logs
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-# Função para log com timestamp
-log() {
-    echo -e "${BLUE}[$(date +'%H:%M:%S')]${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}[✓] $1${NC}"
-}
-
-info() {
-    echo -e "${CYAN}[i] $1${NC}"
-}
-
-warn() {
-    echo -e "${YELLOW}[!] $1${NC}"
-}
-
-error() {
-    echo -e "${RED}[✗] $1${NC}"
-}
-
-# Função para mostrar regras iptables
-show_rules() {
-    echo -e "\n${PURPLE}═══════════════════════════════════════════════════════════════${NC}"
-    info "REGRAS IPTABLES ATUAIS:"
-    echo -e "${PURPLE}───────────────────────────────────────────────────────────────${NC}"
-    
-    echo -e "${YELLOW}FILTER TABLE (INPUT, FORWARD, OUTPUT):${NC}"
-    iptables -L -v -n --line-numbers | head -20
-    
-    echo -e "\n${YELLOW}NAT TABLE:${NC}"
-    iptables -t nat -L -v -n --line-numbers
-    
-    echo -e "\n${YELLOW}ESTATÍSTICAS DE CONEXÃO:${NC}"
-    conntrack -L 2>/dev/null | head -10 || echo "Nenhuma conexão ativa"
-    
-    echo -e "${PURPLE}═══════════════════════════════════════════════════════════════${NC}\n"
-}
-
-# Função para mostrar interfaces
-show_interfaces() {
-    echo -e "\n${CYAN}INTERFACES DE REDE:${NC}"
-    ip -br addr show | grep -v lo
-    echo ""
-}
-
-# Configuração para parar em caso de erro
 set -e
 
-# Limpa a tela
-clear
+echo "=============================================="
+echo "FIREWALL/ROTEADOR - CONFIGURAÇÃO COMPLETA"
+echo "=============================================="
 
-echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${PURPLE}║          CONFIGURAÇÃO DO FIREWALL - INICIANDO               ║${NC}"
-echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-
-sleep 1
-
-log "${YELLOW}Iniciando configuração do firewall...${NC}"
-log "Verificando sistema..."
-
-# Verifica se é root
-if [[ $EUID -ne 0 ]]; then
-    error "Este script deve ser executado como root!"
+if [ "$EUID" -ne 0 ]; then
+    echo "Execute como root: sudo bash firewall.sh"
     exit 1
 fi
-success "Permissão root verificada"
 
-echo ""
-log "${YELLOW}Fase 1/7: Atualizando sistema e instalando pacotes${NC}"
-echo "────────────────────────────────────────────────────────"
+echo "[1/8] Configurando interfaces de rede..."
 
-info "Atualizando lista de pacotes..."
-apt update -y > /tmp/apt-update.log 2>&1
-success "Lista de pacotes atualizada"
+IF_NAT=$(ip link show | grep -o "enp0s3" | head -1)
+IF_LAN=$(ip link show | grep -o "enp0s8" | head -1)
+IF_DMZ=$(ip link show | grep -o "enp0s9" | head -1)
 
-info "Instalando iptables, squid, iptables-persistent, net-tools, curl..."
-apt install -y iptables squid iptables-persistent net-tools curl > /tmp/apt-install.log 2>&1
-success "Pacotes instalados com sucesso"
+if [ -z "$IF_NAT" ]; then IF_NAT="enp0s3"; fi
+if [ -z "$IF_LAN" ]; then IF_LAN="enp0s8"; fi
+if [ -z "$IF_DMZ" ]; then IF_DMZ="enp0s9"; fi
 
-echo ""
-log "${YELLOW}Fase 2/7: Ativando roteamento IP${NC}"
-echo "────────────────────────────────────────────────────────"
-
-info "Ativando IP forwarding..."
-echo 1 > /proc/sys/net/ipv4/ip_forward
-sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
-sysctl -p > /tmp/sysctl.log 2>&1
-success "IP forwarding ativado permanentemente"
-
-echo ""
-log "${YELLOW}Fase 3/7: Verificando interfaces de rede${NC}"
-echo "────────────────────────────────────────────────────────"
-
-# Mostra interfaces disponíveis
-show_interfaces
-
-# Define interfaces (ajuste conforme necessário)
-WAN=enp0s3
-LAN=enp0s8
-DMZ=enp0s9
-
-info "Interfaces configuradas:"
-echo -e "  ${GREEN}WAN:${NC} $WAN (Internet)"
-echo -e "  ${GREEN}LAN:${NC} $LAN (Rede interna - 10.0.3.0/24)"
-echo -e "  ${GREEN}DMZ:${NC} $DMZ (Zona desmilitarizada - 10.0.4.0/24)"
-
-# Verifica se as interfaces existem
-for interface in $WAN $LAN $DMZ; do
-    if ip link show $interface > /dev/null 2>&1; then
-        success "Interface $interface encontrada"
-    else
-        warn "Interface $interface não encontrada! Continuando mesmo assim..."
-    fi
-done
-
-sleep 2
-
-echo ""
-log "${YELLOW}Fase 4/7: Configurando rede (netplan)${NC}"
-echo "────────────────────────────────────────────────────────"
-
-info "Criando arquivo de configuração netplan..."
-
-cat > /etc/netplan/01-firewall.yaml <<EOF
+cat > /etc/netplan/00-installer-config.yaml << EOF
 network:
- version: 2
- renderer: networkd
- ethernets:
-  $WAN:
-   dhcp4: true
-  $LAN:
-   addresses:
-    - 10.0.3.1/24
-  $DMZ:
-   addresses:
-    - 10.0.4.1/24
+  version: 2
+  renderer: networkd
+  ethernets:
+    $IF_NAT:
+      dhcp4: true
+    $IF_LAN:
+      addresses:
+        - 192.168.1.1/24
+    $IF_DMZ:
+      addresses:
+        - 10.0.0.1/24
 EOF
 
-info "Aplicando configurações de rede..."
-netplan apply > /tmp/netplan.log 2>&1
-success "Rede configurada"
+netplan apply
+sleep 3
 
-# Mostra as configurações aplicadas
-ip -br addr show $WAN $LAN $DMZ 2>/dev/null || warn "Algumas interfaces não estão prontas"
+echo "  NAT: $IF_NAT (DHCP)"
+echo "  LAN: $IF_LAN (192.168.1.1/24)"
+echo "  DMZ: $IF_DMZ (10.0.0.1/24)"
 
-sleep 2
+echo "[2/8] Ativando roteamento IP..."
 
-echo ""
-log "${YELLOW}Fase 5/7: Configurando regras do firewall${NC}"
-echo "────────────────────────────────────────────────────────"
+sysctl -w net.ipv4.ip_forward=1
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p
 
-info "Limpando regras antigas..."
+echo " Roteamento ativado"
+
+
+echo "[3/8] Instalando pacotes necessários..."
+
+apt update
+apt install -y squid iptables-persistent net-tools curl wget
+
+echo "  Pacotes instalados"
+
+# ==============================================
+# 4. CONFIGURAR SQUID (PROXY EXPLÍCITO)
+# ==============================================
+echo "[4/8] Configurando Squid (proxy explícito)..."
+
+systemctl stop squid
+
+rm -rf /var/spool/squid/*
+rm -rf /var/log/squid/*
+mkdir -p /var/spool/squid
+mkdir -p /var/log/squid
+chown -R proxy:proxy /var/spool/squid
+chown -R proxy:proxy /var/log/squid
+
+cat > /etc/squid/blacklist.txt << 'EOF'
+# Redes Sociais
+.facebook.com
+.instagram.com
+.twitter.com
+.tiktok.com
+
+# Streaming
+.youtube.com
+.netflix.com
+.spotify.com
+.twitch.tv
+
+# Outros
+.whatsapp.com
+.globo.com
+.uol.com.br
+EOF
+
+cat > /etc/squid/squid.conf << 'EOF'
+http_port 3128
+
+acl rede_interna src 192.168.1.0/24
+acl dmz src 10.0.0.0/24
+acl localhost src 127.0.0.1/32
+
+acl SSL_ports port 443
+acl Safe_ports port 80
+acl Safe_ports port 21
+acl Safe_ports port 443
+acl Safe_ports port 70
+acl Safe_ports port 210
+acl Safe_ports port 1025-65535
+acl CONNECT method CONNECT
+
+acl blacklist dstdomain "/etc/squid/blacklist.txt"
+
+http_access deny blacklist
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost
+http_access allow rede_interna
+http_access allow dmz
+http_access deny all
+
+cache_mem 8 MB
+cache_dir ufs /var/spool/squid 100 16 256
+maximum_object_size 4 MB
+
+access_log /var/log/squid/access.log squid
+cache_log /var/log/squid/cache.log
+
+visible_hostname firewall-tp1
+EOF
+
+squid -k parse || { echo " Erro na configuração do Squid"; exit 1; }
+
+squid -z
+
+systemctl start squid
+systemctl enable squid
+
+echo " Squid configurado (proxy explícito na porta 3128)"
+
+
+echo "[5/8] Configurando iptables (firewall)..."
+
 iptables -F
 iptables -t nat -F
 iptables -X
-success "Regras antigas removidas"
 
-info "Definindo políticas padrão DROP (bloquear tudo)..."
 iptables -P INPUT DROP
-iptables -P OUTPUT DROP
 iptables -P FORWARD DROP
-success "Políticas padrão configuradas"
+iptables -P OUTPUT ACCEPT
 
-echo ""
-info "Configurando regras básicas:"
-
-echo -n "  • Liberando loopback... "
 iptables -A INPUT -i lo -j ACCEPT
-iptables -A OUTPUT -o lo -j ACCEPT
-success "OK"
-
-echo -n "  • Permitindo conexões estabelecidas... "
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-success "OK"
 
-echo ""
-info "Regras para o próprio firewall:"
-
-echo -n "  • Permitindo SSH (porta 22)... "
-iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-success "OK"
-
-echo -n "  • Permitindo ICMP (ping)... "
-iptables -A INPUT -p icmp -j ACCEPT
-success "OK"
-
-echo -n "  • Permitindo DNS para updates... "
+# === REGRAS PARA O FIREWALL ===
+iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
-success "OK"
+iptables -A INPUT -p tcp --dport 3128 -j ACCEPT
 
-echo -n "  • Permitindo HTTP/HTTPS para updates... "
-iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
-success "OK"
+iptables -A FORWARD -d 10.0.0.2 -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -d 10.0.0.2 -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A FORWARD -s 10.0.0.0/24 -j ACCEPT
 
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p udp --dport 53 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 53 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 21 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 20 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 1024:1048 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p tcp --dport 25 -m conntrack --ctstate NEW -j ACCEPT
+iptables -A FORWARD -s 192.168.1.0/24 -p icmp --icmp-type echo-request -j ACCEPT
+
+iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o $IF_NAT -j MASQUERADE
+iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o $IF_NAT -j MASQUERADE
+
+iptables -t nat -A PREROUTING -i $IF_NAT -p tcp --dport 80 -j DNAT --to-destination 10.0.0.2:80
+iptables -t nat -A PREROUTING -i $IF_NAT -p tcp --dport 443 -j DNAT --to-destination 10.0.0.2:443
+
+netfilter-persistent save
+
+echo " iptables configurado"
+
+echo "[6/8] Criando scripts de verificação..."
+
+cat > /root/verificar-firewall.sh << 'EOF'
+#!/bin/bash
+echo "=============================================="
+echo "VERIFICAÇÃO DO FIREWALL"
+echo "=============================================="
 echo ""
-info "Regras para rede cliente (LAN - 10.0.3.0/24):"
-
-echo -n "  • Permitindo SSH... "
-iptables -A FORWARD -s 10.0.3.0/24 -p tcp --dport 22 -j ACCEPT
-success "OK"
-
-echo -n "  • Permitindo DNS... "
-iptables -A FORWARD -s 10.0.3.0/24 -p udp --dport 53 -j ACCEPT
-iptables -A FORWARD -s 10.0.3.0/24 -p tcp --dport 53 -j ACCEPT
-success "OK"
-
-echo -n "  • Permitindo FTP... "
-iptables -A FORWARD -s 10.0.3.0/24 -p tcp --dport 21 -j ACCEPT
-success "OK"
-
-echo -n "  • Permitindo SMTP... "
-iptables -A FORWARD -s 10.0.3.0/24 -p tcp --dport 25 -j ACCEPT
-success "OK"
-
-echo -n "  • Permitindo ICMP... "
-iptables -A FORWARD -s 10.0.3.0/24 -p icmp -j ACCEPT
-success "OK"
-
+echo "1. ROTEAMENTO:"
+cat /proc/sys/net/ipv4/ip_forward
 echo ""
-info "Regras para DMZ (10.0.4.0/24):"
-
-echo -n "  • Permitindo acesso ao servidor web (10.0.4.10:80/443)... "
-iptables -A FORWARD -d 10.0.4.10 -p tcp --dport 80 -j ACCEPT
-iptables -A FORWARD -d 10.0.4.10 -p tcp --dport 443 -j ACCEPT
-iptables -A FORWARD -d 10.0.4.10 -p icmp -j ACCEPT
-success "OK"
-
-echo -n "  • Servidor DMZ pode acessar internet (HTTP/HTTPS/DNS)... "
-iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 80 -j ACCEPT
-iptables -A FORWARD -s 10.0.4.10 -p tcp --dport 443 -j ACCEPT
-iptables -A FORWARD -s 10.0.4.10 -p udp --dport 53 -j ACCEPT
-success "OK"
-
+echo "2. INTERFACES:"
+ip a | grep -E "enp0s|inet" | grep -v inet6
 echo ""
-info "Configurando NAT (Network Address Translation):"
-
-echo -n "  • MASQUERADE para LAN... "
-iptables -t nat -A POSTROUTING -s 10.0.3.0/24 -o $WAN -j MASQUERADE
-success "OK"
-
-echo -n "  • MASQUERADE para DMZ... "
-iptables -t nat -A POSTROUTING -s 10.0.4.0/24 -o $WAN -j MASQUERADE
-success "OK"
-
+echo "3. STATUS DO SQUID:"
+systemctl status squid --no-pager | grep Active
 echo ""
-info "Configurando DNAT (redirecionamento de portas):"
-
-echo -n "  • Redirecionando porta 80 para servidor DMZ (10.0.4.10)... "
-iptables -t nat -A PREROUTING -i $WAN -p tcp --dport 80 -j DNAT --to 10.0.4.10
-success "OK"
-
-echo -n "  • Redirecionando porta 443 para servidor DMZ (10.0.4.10)... "
-iptables -t nat -A PREROUTING -i $WAN -p tcp --dport 443 -j DNAT --to 10.0.4.10
-success "OK"
-
+echo "4. REGRAS IPTABLES (FORWARD):"
+iptables -L FORWARD -v -n | head -10
 echo ""
-log "${YELLOW}Fase 6/7: Configurando Squid Proxy${NC}"
-echo "────────────────────────────────────────────────────────"
-
-info "Criando lista de sites bloqueados..."
-cat > /etc/squid/blacklist.txt <<EOF
-.facebook.com
-.youtube.com
-.netflix.com
-.instagram.com
-.tiktok.com
+echo "5. REGRAS NAT:"
+iptables -t nat -L -v -n | head -10
+echo ""
+echo "6. BLACKLIST (primeiros 5):"
+head -5 /etc/squid/blacklist.txt
+echo ""
+echo "=============================================="
 EOF
-success "Blacklist criada com 5 sites bloqueados"
 
-info "Configurando squid.conf..."
-cat > /etc/squid/squid.conf <<EOF
-http_port 3128
+chmod +x /root/verificar-firewall.sh
 
-acl rede_cliente src 10.0.3.0/24
-acl bloqueados dstdomain "/etc/squid/blacklist.txt"
 
-http_access deny bloqueados
-http_access allow rede_cliente
-http_access deny all
-
-cache_mem 256 MB
-
-access_log /var/log/squid/access.log
-
-visible_hostname firewall
-
-dns_nameservers 8.8.8.8 8.8.4.4
-EOF
-success "Squid configurado"
-
-info "Reiniciando Squid..."
-systemctl restart squid
-systemctl enable squid > /dev/null 2>&1
-success "Squid reiniciado e habilitado"
-
+echo "[7/8] Configuração concluída!"
+echo "=============================================="
+echo "FIREWALL CONFIGURADO COM SUCESSO!"
+echo "=============================================="
 echo ""
-log "${YELLOW}Fase 7/7: Salvando configurações e finalizando${NC}"
-echo "────────────────────────────────────────────────────────"
-
-info "Salvando regras do firewall..."
-netfilter-persistent save > /tmp/save-rules.log 2>&1
-success "Regras salvas permanentemente"
-
+echo "ACESSOS:"
+echo "  LAN: 192.168.1.1/24"
+echo "  DMZ: 10.0.0.1/24"
+echo "  Squid: porta 3128 (proxy explícito)"
 echo ""
-echo -e "${PURPLE}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}✓ FIREWALL CONFIGURADO COM SUCESSO!${NC}"
-echo -e "${PURPLE}═══════════════════════════════════════════════════════════════${NC}"
+echo "COMANDOS ÚTEIS:"
+echo "  Verificar firewall: /root/verificar-firewall.sh"
+echo "  Ver logs do squid: tail -f /var/log/squid/access.log"
+echo "  Ver regras iptables: iptables -L -v -n"
 echo ""
-echo -e "${CYAN}Resumo da configuração:${NC}"
-echo -e "  ${GREEN}• LAN:${NC} 10.0.3.1/24 (Interface: $LAN)"
-echo -e "  ${GREEN}• DMZ:${NC} 10.0.4.1/24 (Interface: $DMZ)"
-echo -e "  ${GREEN}• Proxy:${NC} 10.0.3.1:3128"
-echo -e "  ${GREEN}• Sites bloqueados:${NC} 5 (redes sociais)"
-echo -e "  ${GREEN}• Portas redirecionadas:${NC} 80, 443 → 10.0.4.10"
-echo ""
-
-# Mostra estatísticas finais
-info "Estatísticas do firewall:"
-echo -e "  ${YELLOW}Regras INPUT:${NC} $(iptables -L INPUT | grep -c "ACCEPT") regras ACCEPT"
-echo -e "  ${YELLOW}Regras FORWARD:${NC} $(iptables -L FORWARD | grep -c "ACCEPT") regras ACCEPT"
-echo -e "  ${YELLOW}Regras NAT:${NC} $(iptables -t nat -L | grep -c "DNAT\|MASQUERADE") regras"
-
-echo ""
-info "Para ver todas as regras, execute:"
-echo -e "  ${CYAN}iptables -L -v -n --line-numbers${NC}"
-echo -e "  ${CYAN}iptables -t nat -L -v -n --line-numbers${NC}"
-
-echo ""
-echo -e "${GREEN}✅ Configuração concluída!${NC}"
-echo ""
+echo "PRÓXIMO PASSO: Configurar o Servidor WEB"
+echo "=============================================="
